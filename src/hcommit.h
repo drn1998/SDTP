@@ -47,5 +47,6 @@ int SDTP_commitment_clear(commitment_s * obj);
 int SDTP_commitment_printf(commitment_s * obj);
 
 int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode);
+int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode, commitment_datamode_t dmode);
 
 #endif

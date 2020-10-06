@@ -99,11 +99,64 @@ int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_op
             g_byte_array_append(out, obj->commitment_message->str, obj->commitment_message->len + 1); // Required here? EOF
         else if (obj->commitment_datamode == COMMITMENT_DATA_PAYLOAD) {
             // Get three byte representation of length (16384 KiB)
+            guint32 payload_coded_size; // 16 MiB
+            guint8 packed[4];
+            payload_coded_size = GUINT32_TO_BE(obj->commitment_payload->len);
+            memcpy(packed, &payload_coded_size, 4);
+            g_byte_array_append(out, packed + 1, 3);
             // Append length, then actual data
+            g_byte_array_append(out, obj->commitment_payload->data, obj->commitment_payload->len);
         }
+    } else if (mode == OPERATION_MODE_COMMIT) {
+        g_byte_array_append(out, obj->commitment_hashval->data, obj->commitment_hashval->len);
     }
 
     return 0;
+}
+
+// TODO: Get rid of dmode, assume obj to have mode set using set_by_header
+int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode, commitment_datamode_t dmode) {
+    guint offset = 0;
+
+    if (omode == OPERATION_MODE_REVEAL) {
+
+        guint64 time_binary;
+        gsize len;
+
+        if (out->len < DEF_ENTROPY_LENGTH + sizeof(guint64) + 1 + (dmode ? 1 : 3)) {
+            puts("493");
+            abort();
+        }
+        
+        g_byte_array_append(obj->commitment_entropy, out->data, DEF_ENTROPY_LENGTH);
+        offset += DEF_ENTROPY_LENGTH;
+
+        // Unix-Time value, 64 bit, to GDateTime
+        memcpy(&time_binary, out->data + offset, sizeof(guint64));
+        time_binary = GINT64_FROM_BE(time_binary);
+        offset += sizeof(guint64);
+        
+        len = strlen(out->data + offset);
+        if (len > out->len - (offset +  (dmode ? 1 : 3)))
+            abort();
+
+        g_string_assign(obj->commitment_subject, out->data + offset);
+
+        offset += len + 1;
+
+        if (dmode == COMMITMENT_TEXT_MESSAGE) {
+            len = strlen(out->data + offset);
+            
+            // TODO: Checks required?
+
+            g_string_assign(obj->commitment_message, out->data + offset);
+
+            offset = -1; // Done, no value reasonable
+        }
+
+
+    }
+
 }
 
 // TODO: Analogous to subject_set and message_set, modify to allow overwriting
