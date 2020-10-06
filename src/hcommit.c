@@ -7,8 +7,41 @@
 #include <glib-2.0/glib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
+#include "../sha-2-master/sha-256.h"
 
 #include "hcommit.h"
+
+// Should become a dedicated helper library later
+#ifdef DEBUG
+void debug_print_gbyte_array(GByteArray * to_print, char * identifier) {
+    register unsigned int i;
+
+    for (i = 0; i < to_print->len; i++) {
+        if (i % 16 == 0 && i > 1)
+            putc('\n', stdout);
+        printf("%02x ", to_print->data[i]);
+    } putc('\n', stdout);
+
+    printf("\n%i byte(s), identifier '%s'\n\n", to_print->len, identifier);
+
+    return;
+}
+
+void debug_print_mem(char * dat, size_t len, char * identifier) {
+    register unsigned int i;
+
+    for (i = 0; i < len; i++) {
+        if (i % 16 == 0 && i > 1)
+            putc('\n', stdout);
+        printf("%02hhx ", dat[i]);
+    } putc('\n', stdout);
+
+    printf("\n%li byte(s), identifier '%s'\n\n", len, identifier);
+
+    return;
+}
+#endif
 
 int SDTP_commitment_create(commitment_s ** obj) {
     *obj = g_new(commitment_s, 1);
@@ -84,10 +117,48 @@ int SDTP_commitment_entropy_set(commitment_s * obj) {
     return 0;
 }
 
+int SDTP_commitment_hashval_calculate(commitment_s * obj) {
+    GByteArray * reveal_body_to_hash;
+    guint8 hash[32];
+
+    reveal_body_to_hash = g_byte_array_new();
+
+    SDTP_commitment_body_get(obj, reveal_body_to_hash, OPERATION_MODE_REVEAL);
+    calc_sha_256(hash, reveal_body_to_hash->data, reveal_body_to_hash->len);
+
+    //debug_print_gbyte_array(reveal_body_to_hash, "calc");
+
+    g_byte_array_free(reveal_body_to_hash, TRUE);
+
+    g_byte_array_append(obj->commitment_hashval, hash, 32);
+
+    return 0;
+}
+
+// TODO: Add check if scheduled revelation lies in the past
+int SDTP_commitment_validity_check(commitment_s * obj) {
+    GByteArray * reveal_body_to_hash;
+    guint8 hash[32];
+    int return_value;
+
+    reveal_body_to_hash = g_byte_array_new();
+
+    SDTP_commitment_body_get(obj, reveal_body_to_hash, OPERATION_MODE_REVEAL);
+    calc_sha_256(hash, reveal_body_to_hash->data, reveal_body_to_hash->len);
+
+    //debug_print_gbyte_array(reveal_body_to_hash, "chk");
+
+    return_value = memcmp(obj->commitment_hashval->data, hash, 32);
+
+    g_byte_array_free(reveal_body_to_hash, TRUE);
+
+    return return_value;
+}
+
 int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode) {
     guint64 time_binary;
 
-    // TODO Check existence of entropy, subject etc. unless hidden from public API
+    // TODO: Check existence of entropy, subject etc. unless hidden from public API
 
     if (mode == OPERATION_MODE_REVEAL) {
         time_binary = GUINT64_TO_BE(g_date_time_to_unix(obj->commitment_revelation));
@@ -114,9 +185,9 @@ int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_op
     return 0;
 }
 
-// TODO: Get rid of dmode, assume obj to have mode set using set_by_header
-int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode, commitment_datamode_t dmode) {
+int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode) {
     guint offset = 0;
+    commitment_datamode_t dmode = obj->commitment_datamode; // Fixed this way because replacing everywhere is a mess
 
     if (omode == OPERATION_MODE_REVEAL) {
 
@@ -152,9 +223,31 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
             g_string_assign(obj->commitment_message, out->data + offset);
 
             offset = -1; // Done, no value reasonable
+        } else if (dmode == COMMITMENT_DATA_PAYLOAD) {
+            guint8 unpack[4];
+            guint32 payload_coded_size = 0xffffffff; // 16 MiB
+            memset(unpack, 0, 4);
+            memcpy(unpack + 1, out->data + offset, 3);
+            memcpy(&payload_coded_size, unpack , sizeof(payload_coded_size));
+            payload_coded_size = GINT32_FROM_BE(payload_coded_size);
+
+            offset += 3;
+
+            debug_print_mem(out->data + offset, payload_coded_size, "coded payload content");
+
+            // TODO: Free previously
+            g_byte_array_append(obj->commitment_payload, out->data + offset, payload_coded_size);
+
+            g_assert_true(payload_coded_size == obj->commitment_payload->len);
+
+            return;
         }
 
 
+    } else if (omode == OPERATION_MODE_COMMIT) {
+        g_assert_true(out->len == 32);  // Body with hash only always 32 bytes
+
+        g_byte_array_append(obj->commitment_hashval, out->data, out->len);
     }
 
 }
@@ -227,6 +320,8 @@ int SDTP_commitment_printf(commitment_s * obj) {
 
     g_printf("Content of 'commitment_message':\t%s\n", obj->commitment_message->str);
     g_printf("Content of 'commitment_subject':\t%s\n", obj->commitment_subject->str);
+    g_printf("Content of 'commitment_payload':\n\n");
+    debug_print_mem(obj->commitment_payload->data, obj->commitment_payload->len, "Payload data");
 
     commitment_schedule_date_time = g_date_time_format_iso8601(obj->commitment_revelation);
     g_printf("Content of 'commitment_revelation':\t%s\n", commitment_schedule_date_time);

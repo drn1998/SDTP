@@ -45,8 +45,9 @@ int SDTP_commitment_schedule_set(commitment_s * obj, const gchar * datetime);
 int SDTP_commitment_prepare(commitment_s * obj);
 int SDTP_commitment_clear(commitment_s * obj);
 int SDTP_commitment_printf(commitment_s * obj);
-
+int SDTP_commitment_hashval_calculate(commitment_s * obj);
+int SDTP_commitment_validity_check(commitment_s * obj);
 int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode);
-int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode, commitment_datamode_t dmode);
+int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode);
 
 #endif
