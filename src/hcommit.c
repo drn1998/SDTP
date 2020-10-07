@@ -155,6 +155,45 @@ int SDTP_commitment_validity_check(commitment_s * obj) {
     return return_value;
 }
 
+int SDTP_commitment_header_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode) {
+    guint8 version = 0x00;
+    guint8 op_mode;
+    guint8 data_mode;
+
+    if(obj->commitment_datamode == OPERATION_MODE_COMMIT) {
+        op_mode = 0;
+    } else if (obj->commitment_datamode == OPERATION_MODE_REVEAL) {
+        op_mode = 1;
+    } else return -1;
+
+    if(mode == COMMITMENT_TEXT_MESSAGE) {
+        data_mode = 0;
+    } else if (mode == COMMITMENT_DATA_PAYLOAD){
+        data_mode = 1;
+    } else return -1;
+
+    g_byte_array_append(out, &version, sizeof(version));
+    g_byte_array_append(out, &op_mode, sizeof(op_mode));
+    g_byte_array_append(out, &data_mode, sizeof(data_mode));
+
+    return 0;
+}
+
+int SDTP_commitment_set_by_header(commitment_s * obj, GByteArray * out, commitment_operation_mode_t * mode) {
+    g_assert_true(out->len == 3);
+    g_assert_true(out->data[0] == 0);
+
+    if(out->data[1] == 0) {
+        *mode = OPERATION_MODE_COMMIT;
+    } else if (out->data[1] == 1) {
+        *mode = OPERATION_MODE_REVEAL;
+    }
+
+    obj->commitment_datamode = out->data[2] ? COMMITMENT_TEXT_MESSAGE : COMMITMENT_DATA_PAYLOAD;
+
+    return 0;
+}
+
 int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode) {
     guint64 time_binary;
 

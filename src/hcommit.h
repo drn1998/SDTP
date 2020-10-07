@@ -48,6 +48,16 @@ int SDTP_commitment_printf(commitment_s * obj);
 int SDTP_commitment_hashval_calculate(commitment_s * obj);
 int SDTP_commitment_validity_check(commitment_s * obj);
 int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode);
-int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode);
+int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode); // Call mode or call others omode
+
+// Header handling
+int SDTP_commitment_header_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode);
+int SDTP_commitment_set_by_header(commitment_s * obj, GByteArray * out, commitment_operation_mode_t * mode);
+int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body);
+int SDTP_commitment_split_by_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body);
+
+// Debug TODO: Doesn't really belong here
+void debug_print_gbyte_array(GByteArray * to_print, char * identifier);
+void debug_print_mem(char * dat, size_t len, char * identifier);
 
 #endif
