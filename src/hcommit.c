@@ -133,8 +133,9 @@ int SDTP_commitment_hashval_calculate(commitment_s * obj) {
     //debug_print_gbyte_array(reveal_body_to_hash, "calc");
 
     g_byte_array_free(reveal_body_to_hash, TRUE);
-
     g_byte_array_append(obj->commitment_hashval, hash, SHA256_HASH_LENGTH);
+
+    obj->commitment_calculated_b = TRUE;
 
     return 0;
 }
@@ -221,8 +222,10 @@ int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_op
             // Append length, then actual data
             g_byte_array_append(out, obj->commitment_payload->data, obj->commitment_payload->len);
         }
-    } else if (mode == OPERATION_MODE_COMMIT) {
+    } else if (mode == OPERATION_MODE_COMMIT && obj->commitment_calculated_b == TRUE) {
         g_byte_array_append(out, obj->commitment_hashval->data, obj->commitment_hashval->len);
+    } else {
+        return -1;
     }
 
     return 0;
@@ -265,6 +268,8 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
             g_string_assign(obj->commitment_message, out->data + offset);
 
             offset = -1; // Done, no value reasonable
+
+            return 0;
         } else if (dmode == COMMITMENT_DATA_PAYLOAD) {
             guint8 unpack[4];
             guint32 payload_coded_size = 0xffffffff; // 16 MiB
@@ -280,7 +285,7 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
 
             g_assert_true(payload_coded_size == obj->commitment_payload->len);
 
-            return;
+            return 0;
         }
 
 
@@ -290,6 +295,7 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
         g_byte_array_append(obj->commitment_hashval, out->data, out->len);
     }
 
+    return 0;
 }
 
 int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body) {
@@ -300,9 +306,9 @@ int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray
         g_assert_true(header->len == 3);
 
         if(header->data[1] == 0) {
-            *mode = OPERATION_MODE_COMMIT;
+            opmode = OPERATION_MODE_COMMIT;
         } else if (header->data[1] == 1) {
-            *mode = OPERATION_MODE_REVEAL;
+            opmode = OPERATION_MODE_REVEAL;
         }
 
         if(opmode == OPERATION_MODE_COMMIT) {
@@ -327,9 +333,9 @@ int SDTP_commitment_split_to_header_and_body(GByteArray * commitment, GByteArray
         g_assert_true(commitment->len > 3);
 
         if(commitment->data[1] == 0) {
-            *mode = OPERATION_MODE_COMMIT;
+            opmode = OPERATION_MODE_COMMIT;
         } else if (commitment->data[1] == 1) {
-            *mode = OPERATION_MODE_REVEAL;
+            opmode = OPERATION_MODE_REVEAL;
         }
 
         if(opmode == OPERATION_MODE_COMMIT) {
@@ -351,11 +357,13 @@ int SDTP_commitment_schedule_set(commitment_s * obj, const gchar * datetime) {
     GTimeZone * UTC = g_time_zone_new("UTC");
     int return_value;
 
+    if (obj->commitment_schedule_b)
+        g_date_time_unref(obj->commitment_revelation);
+
     obj->commitment_revelation = g_date_time_new_from_iso8601(datetime, UTC);
     current_time = g_date_time_new_now(UTC);
 
     if(g_date_time_compare(obj->commitment_revelation, current_time) < 1) {
-        // puts("ERROR: Date lies in the past!");
         g_date_time_unref(obj->commitment_revelation);
         obj->commitment_revelation = g_date_time_new_from_iso8601("1970-01-01 00:00:00", UTC);
         obj->commitment_schedule_b = TRUE;  // It is set, albeit 1970-0
@@ -374,8 +382,12 @@ int SDTP_commitment_schedule_set(commitment_s * obj, const gchar * datetime) {
 }
 
 int SDTP_commitment_prepare(commitment_s * obj) {
-    // TODO Security measure so it's called once?
+    // TODO Security measure so it's called once? (static bool?)
     // Call prepare within create, clear within delete
+
+    // Initialize
+    obj->commitment_schedule_b = FALSE;
+    obj->commitment_calculated_b = FALSE;
 
     obj->commitment_entropy = g_byte_array_new();
     obj->commitment_hashval = g_byte_array_new();
@@ -384,11 +396,7 @@ int SDTP_commitment_prepare(commitment_s * obj) {
     obj->commitment_subject = g_string_new("");
     obj->commitment_message = g_string_new("");
 
-    SDTP_commitment_schedule_set(obj, "1970-01-01 00:00:00"); // Ugly and ought tb changed
-
-    // Initialize
-    obj->commitment_schedule_b = FALSE;
-    obj->commitment_calculated_b = FALSE;
+    SDTP_commitment_schedule_set(obj, "1970-01-01 00:00:00");
 
     return 0;
 }
