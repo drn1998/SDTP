@@ -42,6 +42,10 @@ void debug_print_mem(char * dat, size_t len, char * identifier) {
     return;
 }
 #endif
+#ifndef DEBUG
+void debug_print_gbyte_array(GByteArray * to_print, char * identifier) {return;}
+void debug_print_mem(char * dat, size_t len, char * identifier) {return;}
+#endif
 
 int SDTP_commitment_create(commitment_s ** obj) {
     *obj = g_new(commitment_s, 1);
@@ -119,7 +123,7 @@ int SDTP_commitment_entropy_set(commitment_s * obj) {
 
 int SDTP_commitment_hashval_calculate(commitment_s * obj) {
     GByteArray * reveal_body_to_hash;
-    guint8 hash[32];
+    guint8 hash[SHA256_HASH_LENGTH];
 
     reveal_body_to_hash = g_byte_array_new();
 
@@ -130,7 +134,7 @@ int SDTP_commitment_hashval_calculate(commitment_s * obj) {
 
     g_byte_array_free(reveal_body_to_hash, TRUE);
 
-    g_byte_array_append(obj->commitment_hashval, hash, 32);
+    g_byte_array_append(obj->commitment_hashval, hash, SHA256_HASH_LENGTH);
 
     return 0;
 }
@@ -138,7 +142,7 @@ int SDTP_commitment_hashval_calculate(commitment_s * obj) {
 // TODO: Add check if scheduled revelation lies in the past
 int SDTP_commitment_validity_check(commitment_s * obj) {
     GByteArray * reveal_body_to_hash;
-    guint8 hash[32];
+    guint8 hash[SHA256_HASH_LENGTH];
     int return_value;
 
     reveal_body_to_hash = g_byte_array_new();
@@ -148,7 +152,7 @@ int SDTP_commitment_validity_check(commitment_s * obj) {
 
     //debug_print_gbyte_array(reveal_body_to_hash, "chk");
 
-    return_value = memcmp(obj->commitment_hashval->data, hash, 32);
+    return_value = memcmp(obj->commitment_hashval->data, hash, SHA256_HASH_LENGTH);
 
     g_byte_array_free(reveal_body_to_hash, TRUE);
 
@@ -182,8 +186,6 @@ int SDTP_commitment_header_get(commitment_s * obj, GByteArray * out, commitment_
 int SDTP_commitment_set_by_header(commitment_s * obj, GByteArray * out, commitment_operation_mode_t * mode) {
     g_assert_true(out->len == 3);
     g_assert_true(out->data[0] == 0);
-
-    debug_print_gbyte_array(out, "Byte array");
 
     if(out->data[1] == 0) {
         *mode = OPERATION_MODE_COMMIT;
@@ -236,7 +238,6 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
         gsize len;
 
         if (out->len < DEF_ENTROPY_LENGTH + sizeof(guint64) + 1 + (dmode ? 1 : 3)) {
-            puts("493");
             abort();
         }
         
@@ -274,8 +275,6 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
 
             offset += 3;
 
-            debug_print_mem(out->data + offset, payload_coded_size, "coded payload content");
-
             // TODO: Free previously
             g_byte_array_append(obj->commitment_payload, out->data + offset, payload_coded_size);
 
@@ -286,11 +285,63 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
 
 
     } else if (omode == OPERATION_MODE_COMMIT) {
-        g_assert_true(out->len == 32);  // Body with hash only always 32 bytes
+        g_assert_true(out->len == SHA256_HASH_LENGTH);  // Body with hash only always 32 bytes
 
         g_byte_array_append(obj->commitment_hashval, out->data, out->len);
     }
 
+}
+
+int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body) {
+    // Final check of plausibility
+    {
+        commitment_operation_mode_t opmode;
+
+        g_assert_true(header->len == 3);
+
+        if(header->data[1] == 0) {
+            *mode = OPERATION_MODE_COMMIT;
+        } else if (header->data[1] == 1) {
+            *mode = OPERATION_MODE_REVEAL;
+        }
+
+        if(opmode == OPERATION_MODE_COMMIT) {
+            g_assert_true(body->len == SHA256_HASH_LENGTH);
+        } else if (opmode == OPERATION_MODE_REVEAL) {
+            // Might be changed to explicitly distinguish between min length of text and data mode.
+            g_assert_true(body->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 2));
+        }
+    }
+
+    g_byte_array_append(commitment, header->data, header->len);
+    g_byte_array_append(commitment, body->data, body->len);
+
+    return 0;
+}
+
+int SDTP_commitment_split_to_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body) {
+    // Final check of plausibility
+    {
+        commitment_operation_mode_t opmode;
+
+        g_assert_true(commitment->len > 3);
+
+        if(commitment->data[1] == 0) {
+            *mode = OPERATION_MODE_COMMIT;
+        } else if (commitment->data[1] == 1) {
+            *mode = OPERATION_MODE_REVEAL;
+        }
+
+        if(opmode == OPERATION_MODE_COMMIT) {
+            g_assert_true(commitment->len == SHA256_HASH_LENGTH + 3);   // Including fixed-length header
+        } else if (opmode == OPERATION_MODE_REVEAL) {
+            // Might be changed to explicitly distinguish between min length of text and data mode.
+            g_assert_true(body->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 2 + 3));  // Same here
+        }
+    }
+
+    g_byte_array_append(header, commitment->data, 3);
+    g_byte_array_append(body, commitment->data + 3, commitment->len - 3);
 }
 
 // TODO: Analogous to subject_set and message_set, modify to allow overwriting
