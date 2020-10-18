@@ -4,10 +4,12 @@
 #include <glib-2.0/glib.h>
 #include <stdio.h>
 
+#define g_byte_array_empty(dat); g_byte_array_remove_range(dat,0,dat->len);
+
 #define DEF_ENTROPY_LENGTH 12
 #define MAX_SUBJECT_LENGTH 64
 #define MAX_MESSAGE_LENGTH 1024
-#define MAX_PAYLOAD_LENGTH 16777216
+#define MAX_PAYLOAD_LENGTH (1024 * 1024 * 16)
 #define SHA256_HASH_LENGTH 32
 
 typedef enum commitment_datamode_t {

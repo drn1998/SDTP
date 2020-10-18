@@ -64,6 +64,7 @@ int SDTP_commitment_delete(commitment_s ** obj) {
 
 int SDTP_commitment_message_set(commitment_s * obj, GString * msg) {
 
+    // TODO Length with NULL 1024 or without?
     if(strlen(msg->str) > MAX_MESSAGE_LENGTH) {
         return -1;
     }
@@ -204,8 +205,9 @@ int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_op
 
     // TODO: Check existence of entropy, subject etc. unless hidden from public API
 
+    time_binary = GUINT64_TO_BE(g_date_time_to_unix(obj->commitment_revelation));
+
     if (mode == OPERATION_MODE_REVEAL) {
-        time_binary = GUINT64_TO_BE(g_date_time_to_unix(obj->commitment_revelation));
 
         g_byte_array_append(out, obj->commitment_entropy->data, obj->commitment_entropy->len);
         g_byte_array_append(out, &time_binary, sizeof(time_binary));
@@ -223,7 +225,9 @@ int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_op
             g_byte_array_append(out, obj->commitment_payload->data, obj->commitment_payload->len);
         }
     } else if (mode == OPERATION_MODE_COMMIT && obj->commitment_calculated_b == TRUE) {
+        g_byte_array_append(out, &time_binary, sizeof(time_binary));
         g_byte_array_append(out, obj->commitment_hashval->data, obj->commitment_hashval->len);
+        g_byte_array_append(out, obj->commitment_subject->str, obj->commitment_subject->len + 1);
     } else {
         return -1;
     }
@@ -233,11 +237,10 @@ int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_op
 
 int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode) {
     guint offset = 0;
+    guint64 time_binary;
     commitment_datamode_t dmode = obj->commitment_datamode; // Fixed this way because replacing everywhere is a mess
 
     if (omode == OPERATION_MODE_REVEAL) {
-
-        guint64 time_binary;
         gsize len;
 
         if (out->len < DEF_ENTROPY_LENGTH + sizeof(guint64) + 1 + (dmode ? 1 : 3)) {
@@ -272,7 +275,7 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
             return 0;
         } else if (dmode == COMMITMENT_DATA_PAYLOAD) {
             guint8 unpack[4];
-            guint32 payload_coded_size = 0xffffffff; // 16 MiB
+            guint32 payload_coded_size; // 16 MiB
             memset(unpack, 0, 4);
             memcpy(unpack + 1, out->data + offset, 3);
             memcpy(&payload_coded_size, unpack , sizeof(payload_coded_size));
@@ -290,9 +293,17 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
 
 
     } else if (omode == OPERATION_MODE_COMMIT) {
-        g_assert_true(out->len == SHA256_HASH_LENGTH);  // Body with hash only always 32 bytes
+        if(out->len < (sizeof(guint64) + SHA256_HASH_LENGTH + 1))
+            abort();
 
-        g_byte_array_append(obj->commitment_hashval, out->data, out->len);
+        memcpy(&time_binary, out->data + offset, sizeof(guint64));
+        time_binary = GINT64_FROM_BE(time_binary);
+        offset += sizeof(guint64);
+
+        g_byte_array_append(obj->commitment_hashval, out->data + offset, SHA256_HASH_LENGTH);
+        offset += SHA256_HASH_LENGTH;
+
+        g_string_assign(obj->commitment_subject, out->data + offset);
     }
 
     return 0;
