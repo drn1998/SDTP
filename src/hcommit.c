@@ -235,9 +235,10 @@ int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_op
     return 0;
 }
 
+// TODO: Get rid of 'omode', tb determined from obj as set_by_header ought tb called first anyway
 int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode) {
     guint offset = 0;
-    guint64 time_binary;
+    guint64 time_binary = 0;
     commitment_datamode_t dmode = obj->commitment_datamode; // Fixed this way because replacing everywhere is a mess
 
     if (omode == OPERATION_MODE_REVEAL) {
@@ -272,7 +273,6 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
 
             offset = -1; // Done, no value reasonable
 
-            return 0;
         } else if (dmode == COMMITMENT_DATA_PAYLOAD) {
             guint8 unpack[4];
             guint32 payload_coded_size; // 16 MiB
@@ -287,14 +287,12 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
             g_byte_array_append(obj->commitment_payload, out->data + offset, payload_coded_size);
 
             g_assert_true(payload_coded_size == obj->commitment_payload->len);
-
-            return 0;
         }
 
 
     } else if (omode == OPERATION_MODE_COMMIT) {
-        if(out->len < (sizeof(guint64) + SHA256_HASH_LENGTH + 1))
-            abort();
+        /* if(out->len < (sizeof(guint64) + SHA256_HASH_LENGTH + 1))
+            abort(); */
 
         memcpy(&time_binary, out->data + offset, sizeof(guint64));
         time_binary = GINT64_FROM_BE(time_binary);
@@ -302,7 +300,6 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
 
         g_byte_array_append(obj->commitment_hashval, out->data + offset, SHA256_HASH_LENGTH);
         offset += SHA256_HASH_LENGTH;
-
         g_string_assign(obj->commitment_subject, out->data + offset);
     }
 
@@ -323,10 +320,10 @@ int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray
         }
 
         if(opmode == OPERATION_MODE_COMMIT) {
-            g_assert_true(body->len == SHA256_HASH_LENGTH);
+            //g_assert_true(body->len == SHA256_HASH_LENGTH);
         } else if (opmode == OPERATION_MODE_REVEAL) {
             // Might be changed to explicitly distinguish between min length of text and data mode.
-            g_assert_true(body->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 2));
+            //g_assert_true(body->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 2));
         }
     }
 
@@ -338,7 +335,7 @@ int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray
 
 int SDTP_commitment_split_to_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body) {
     // Final check of plausibility
-    {
+    /*{
         commitment_operation_mode_t opmode;
 
         g_assert_true(commitment->len > 3);
@@ -350,12 +347,12 @@ int SDTP_commitment_split_to_header_and_body(GByteArray * commitment, GByteArray
         }
 
         if(opmode == OPERATION_MODE_COMMIT) {
-            g_assert_true(commitment->len == SHA256_HASH_LENGTH + 3);   // Including fixed-length header
+            //g_assert_true(commitment->len == SHA256_HASH_LENGTH + 3);   // Including fixed-length header
         } else if (opmode == OPERATION_MODE_REVEAL) {
             // Might be changed to explicitly distinguish between min length of text and data mode.
-            g_assert_true(body->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 2 + 3));  // Same here
+            //g_assert_true(body->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 2 + 3));  // Same here
         }
-    }
+    }*/
 
     g_byte_array_append(header, commitment->data, 3);
     g_byte_array_append(body, commitment->data + 3, commitment->len - 3);

@@ -13,6 +13,12 @@ int main(int argc, char* argv[]) {
 
     GByteArray * temporary_data;
 
+    GByteArray * header;
+    GByteArray * body;
+    GByteArray * header_2;
+    GByteArray * body_2;
+    GByteArray * commitment;
+
     unsigned int success = 0;
     unsigned int failure = 0;
 
@@ -27,6 +33,12 @@ int main(int argc, char* argv[]) {
     SDTP_commitment_prepare(verify_test);
 
     temporary_data = g_byte_array_new();
+
+    header = g_byte_array_new();
+    body = g_byte_array_new();
+    header_2 = g_byte_array_new();
+    body_2 = g_byte_array_new();
+    commitment = g_byte_array_new();
 
     test_subject = g_string_new("");
     test_message = g_string_new("");
@@ -102,7 +114,7 @@ int main(int argc, char* argv[]) {
     }
 
     {   // Test assign ok string
-        g_string_assign(test_message, "Ordinary subject whichs length is below 64 bytes. 👍");
+        g_string_assign(test_subject, "Ordinary subject whichs length is below 64 bytes. 👍");
         return_value = SDTP_commitment_subject_set(create_test, test_subject);
 
         if(return_value == 0) {
@@ -139,18 +151,20 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // FIXME: Test isn't run at all. Check why!
     {   // Test if previous string remained after failed change
+        //g_string_assign(test_message, "Ordinary subject whichs length is below 64 bytes. 👍");
         return_value = strcmp(test_subject->str, create_test->commitment_subject->str);
 
         if(return_value == 0) {
             puts(KGRN "SUCCESS:" KNRM " String retrieved from commitment object equals given one.");
             success++;
-        } else if (return_value == -1) {
-            printf(KRED "FAILURE:" KNRM " When comparing retrieved and given string, strcmp has returned %i.\n", return_value);
+        } else {
+            puts(KRED "FAILURE:" KNRM " When comparing retrieved and given string, strcmp has returned non-zero value.");
             failure++;
         }
     }
+
+    puts(create_test->commitment_subject->str);
 
     {   // Access to /dev/urandom possible?
         return_value = SDTP_commitment_entropy_set(create_test);
@@ -256,16 +270,115 @@ int main(int argc, char* argv[]) {
     {   // NOT A TEST: Get body and print it
         SDTP_commitment_body_get(create_test, temporary_data, OPERATION_MODE_COMMIT);
         debug_print_mem(temporary_data->data, temporary_data->len, "Body (commit)");
-        g_byte_array_empty(temporary_data);
     }
+
+    {   // Is body length above minimum byte length?
+        if(temporary_data->len > (sizeof(guint64) + 1 + SHA256_HASH_LENGTH)) {
+            // TODO: Careful once datetime is optional
+            puts(KGRN "SUCCESS:" KNRM " Body length in commit mode not below 41 bytes.");
+            success++;
+        } else {
+            puts(KRED "FAILURE:" KNRM " Body length in commit mode below 41 bytes.");
+            failure++;
+        }
+    }
+
+    g_byte_array_empty(temporary_data);
 
     {   // NOT A TEST: Get body and print it
         SDTP_commitment_body_get(create_test, temporary_data, OPERATION_MODE_REVEAL);
         debug_print_mem(temporary_data->data, temporary_data->len, "Body (reveal)");
-        g_byte_array_empty(temporary_data);
     }
 
+    {   // Is body length above minimum byte length?
+        if(temporary_data->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 1 + 1 )) {
+            // TODO: Careful once datetime is optional
+            puts(KGRN "SUCCESS:" KNRM " Body length in reveal mode not below 20 bytes.");
+            success++;
+        } else {
+            puts(KRED "FAILURE:" KNRM " Body length in reveal mode below 20 bytes.");
+            failure++;
+        }
+    }
+
+    g_byte_array_empty(temporary_data);
+
+    {   // Get serialized commitment
+        SDTP_commitment_header_get(create_test, header, OPERATION_MODE_COMMIT);
+        SDTP_commitment_body_get(create_test, body, OPERATION_MODE_COMMIT);
+        SDTP_commitment_get_from_header_and_body(commitment, header, body);
+
+        debug_print_mem(commitment->data, commitment->len, "Full commitment");
+    }
+
+    // Check length or other properties of GByteArray * commitment? If so, here
+
+    SDTP_commitment_split_to_header_and_body(commitment, header_2, body_2);
+
+    {   // Header unaffected?
+        return_value = memcmp(header->data, header_2->data, header->len);
+
+        if(return_value == 0) {
+            puts(KGRN "SUCCESS:" KNRM " Header left intact after combined and re-separated from full binary commitment.");
+            success++;
+        } else {
+            puts(KRED "FAILURE:" KNRM " Header got corrupted.");
+            failure++;
+        }
+    }
+
+    {   // Body unaffected?
+        return_value = memcmp(body->data, body_2->data, body->len);
+
+        if(return_value == 0) {
+            puts(KGRN "SUCCESS:" KNRM " Body left intact after combined and re-separated from full binary commitment.");
+            success++;
+        } else {
+            puts(KRED "FAILURE:" KNRM " Body got corrupted.");
+            failure++;
+        }
+    }
+
+    commitment_operation_mode_t rx_mode;
+
+    SDTP_commitment_set_by_header(verify_test, header_2, &rx_mode);
+    SDTP_commitment_set_by_body(verify_test, body_2, rx_mode);
+
+    {
+        return_value = memcmp(create_test->commitment_hashval->data, verify_test->commitment_hashval->data, SHA256_HASH_LENGTH);
+
+        if(return_value == 0) {
+            puts(KGRN "SUCCESS:" KNRM " Hash value has not been changed after serialization and deserialization.");
+            success++;
+        } else {
+            puts(KRED "FAILURE:" KNRM " Hash value got corrupted and is not the same anymore.");
+            failure++;
+        }
+    }
+
+    puts(create_test->commitment_subject->str);
+    puts(verify_test->commitment_subject->str);
+
+    {
+        return_value = strcmp(create_test->commitment_subject->str, verify_test->commitment_subject->str);
+
+        if(return_value == 0) {
+            puts(KGRN "SUCCESS:" KNRM " Subject string has not been changed after serialization and deserialization.");
+            success++;
+        } else {
+            puts(KRED "FAILURE:" KNRM " Subject string got corrupted and is not the same anymore.");
+            failure++;
+        }
+    }
+
+
     g_byte_array_free(temporary_data, TRUE);
+
+    g_byte_array_free(header, TRUE);
+    g_byte_array_free(body, TRUE);
+    g_byte_array_free(header_2, TRUE);
+    g_byte_array_free(body_2, TRUE);
+    g_byte_array_free(commitment, TRUE);
 
     g_string_free(test_message, TRUE);
     g_string_free(test_subject, TRUE);
