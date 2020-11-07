@@ -153,13 +153,13 @@ int main(int argc, char* argv[]) {
 
     {   // Test if previous string remained after failed change
         //g_string_assign(test_message, "Ordinary subject whichs length is below 64 bytes. 👍");
-        return_value = strcmp(test_subject->str, create_test->commitment_subject->str);
+        return_value = strcmp("Ordinary subject whichs length is below 64 bytes. 👍", create_test->commitment_subject->str);
 
         if(return_value == 0) {
-            puts(KGRN "SUCCESS:" KNRM " String retrieved from commitment object equals given one.");
+            puts(KGRN "SUCCESS:" KNRM " String unchanged after failed attempt to edit.");
             success++;
         } else {
-            puts(KRED "FAILURE:" KNRM " When comparing retrieved and given string, strcmp has returned non-zero value.");
+            puts(KRED "FAILURE:" KNRM " string not consistent after rejected change.");
             failure++;
         }
     }
@@ -343,6 +343,8 @@ int main(int argc, char* argv[]) {
 
     SDTP_commitment_set_by_header(verify_test, header_2, &rx_mode);
     SDTP_commitment_set_by_body(verify_test, body_2, rx_mode);
+
+    debug_print_gbyte_array(body_2, "body_2");
 
     {
         return_value = memcmp(create_test->commitment_hashval->data, verify_test->commitment_hashval->data, SHA256_HASH_LENGTH);

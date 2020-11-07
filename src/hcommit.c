@@ -2,6 +2,7 @@
  * Is there a glib-internal function to test if an object (especially strings) is set or not?
  * Rename SDTP_commitment_write to **_serialize?
  * Use glibcryptos implementation for SHA-256 and random entropy
+ * Make g_byte_array_set macro: empty + append; tb used with entropy e.g.
  */
 
 #include <glib-2.0/glib.h>
@@ -134,6 +135,7 @@ int SDTP_commitment_hashval_calculate(commitment_s * obj) {
     //debug_print_gbyte_array(reveal_body_to_hash, "calc");
 
     g_byte_array_free(reveal_body_to_hash, TRUE);
+    g_byte_array_empty(obj->commitment_hashval);
     g_byte_array_append(obj->commitment_hashval, hash, SHA256_HASH_LENGTH);
 
     obj->commitment_calculated_b = TRUE;
