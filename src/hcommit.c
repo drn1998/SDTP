@@ -154,6 +154,8 @@ int SDTP_commitment_validity_check(commitment_s * obj) {
     SDTP_commitment_body_get(obj, reveal_body_to_hash, OPERATION_MODE_REVEAL);
     calc_sha_256(hash, reveal_body_to_hash->data, reveal_body_to_hash->len);
 
+    debug_print_gbyte_array(reveal_body_to_hash, "reveal_body_validate");
+
     //debug_print_gbyte_array(reveal_body_to_hash, "chk");
 
     return_value = memcmp(obj->commitment_hashval->data, hash, SHA256_HASH_LENGTH);
@@ -197,13 +199,21 @@ int SDTP_commitment_set_by_header(commitment_s * obj, GByteArray * out, commitme
         *mode = OPERATION_MODE_REVEAL;
     }
 
-    obj->commitment_datamode = out->data[2] ? COMMITMENT_TEXT_MESSAGE : COMMITMENT_DATA_PAYLOAD;
+    if(out->data[2] == 0) {
+        obj->commitment_datamode == COMMITMENT_TEXT_MESSAGE;
+    } else if(out->data[2] == 1) {
+        obj->commitment_datamode == COMMITMENT_DATA_PAYLOAD;
+    }
+
+    //obj->commitment_datamode = out->data[2] ? COMMITMENT_TEXT_MESSAGE : COMMITMENT_DATA_PAYLOAD;
 
     return 0;
 }
 
 int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode) {
     guint64 time_binary;
+
+    g_byte_array_empty(out);
 
     // TODO: Check existence of entropy, subject etc. unless hidden from public API
 

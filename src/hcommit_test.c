@@ -164,8 +164,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    puts(create_test->commitment_subject->str);
-
     {   // Access to /dev/urandom possible?
         return_value = SDTP_commitment_entropy_set(create_test);
 
@@ -191,16 +189,9 @@ int main(int argc, char* argv[]) {
     // TODO: More testing about scheduled once implemented fully (and with optionality)
     SDTP_commitment_schedule_set(create_test, "2022-05-05 19:00:00");
 
-    {   // NOT A TEST: Printing entropy data
-        debug_print_mem(create_test->commitment_entropy->data, DEF_ENTROPY_LENGTH, "Entropy data");
-    }
 
     {   // NOT A TEST: Commitment calculation
         SDTP_commitment_hashval_calculate(create_test);
-    }
-
-    {   // NOT A TEST: Printing hashval data
-        debug_print_mem(create_test->commitment_hashval->data, SHA256_HASH_LENGTH, "Hash data");
     }
 
     {   // Hash verification of valid commitment
@@ -235,7 +226,6 @@ int main(int argc, char* argv[]) {
 
     {   // NOT A TEST: Get header and print it
         SDTP_commitment_header_get(create_test, temporary_data, OPERATION_MODE_COMMIT);
-        debug_print_mem(temporary_data->data, temporary_data->len, "Header (commit)");
     }
 
     {   // Is header length 3 bytes?
@@ -252,7 +242,6 @@ int main(int argc, char* argv[]) {
 
     {   // NOT A TEST: Get header and print it
         SDTP_commitment_header_get(create_test, temporary_data, OPERATION_MODE_REVEAL);
-        debug_print_mem(temporary_data->data, temporary_data->len, "Header (reveal)");
     }
 
     {   // Is header length 3 bytes?
@@ -269,7 +258,6 @@ int main(int argc, char* argv[]) {
 
     {   // NOT A TEST: Get body and print it
         SDTP_commitment_body_get(create_test, temporary_data, OPERATION_MODE_COMMIT);
-        debug_print_mem(temporary_data->data, temporary_data->len, "Body (commit)");
     }
 
     {   // Is body length above minimum byte length?
@@ -287,7 +275,6 @@ int main(int argc, char* argv[]) {
 
     {   // NOT A TEST: Get body and print it
         SDTP_commitment_body_get(create_test, temporary_data, OPERATION_MODE_REVEAL);
-        debug_print_mem(temporary_data->data, temporary_data->len, "Body (reveal)");
     }
 
     {   // Is body length above minimum byte length?
@@ -307,8 +294,6 @@ int main(int argc, char* argv[]) {
         SDTP_commitment_header_get(create_test, header, OPERATION_MODE_COMMIT);
         SDTP_commitment_body_get(create_test, body, OPERATION_MODE_COMMIT);
         SDTP_commitment_get_from_header_and_body(commitment, header, body);
-
-        debug_print_mem(commitment->data, commitment->len, "Full commitment");
     }
 
     // Check length or other properties of GByteArray * commitment? If so, here
@@ -344,8 +329,6 @@ int main(int argc, char* argv[]) {
     SDTP_commitment_set_by_header(verify_test, header_2, &rx_mode);
     SDTP_commitment_set_by_body(verify_test, body_2, rx_mode);
 
-    debug_print_gbyte_array(body_2, "body_2");
-
     {
         return_value = memcmp(create_test->commitment_hashval->data, verify_test->commitment_hashval->data, SHA256_HASH_LENGTH);
 
@@ -357,9 +340,6 @@ int main(int argc, char* argv[]) {
             failure++;
         }
     }
-
-    puts(create_test->commitment_subject->str);
-    puts(verify_test->commitment_subject->str);
 
     {
         return_value = strcmp(create_test->commitment_subject->str, verify_test->commitment_subject->str);
@@ -373,6 +353,46 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Adding (hopefully) reveal data to commit data
+
+    g_byte_array_empty(header);
+    g_byte_array_empty(body);
+    g_byte_array_empty(commitment);
+    g_byte_array_empty(header_2);
+    g_byte_array_empty(body_2);
+
+    SDTP_commitment_header_get(create_test, header, OPERATION_MODE_REVEAL);
+    SDTP_commitment_body_get(create_test, body, OPERATION_MODE_REVEAL);
+
+    SDTP_commitment_get_from_header_and_body(commitment, header, body);
+    SDTP_commitment_split_to_header_and_body(commitment, header_2, body_2);
+
+    SDTP_commitment_set_by_header(verify_test, header_2, &rx_mode);
+    SDTP_commitment_set_by_body(verify_test, body_2, rx_mode);
+
+    {
+        return_value = strcmp(create_test->commitment_message->str, verify_test->commitment_message->str);
+
+        if(return_value == 0) {
+            puts(KGRN "SUCCESS:" KNRM " Message string has not been changed after serialization and deserialization.");
+            success++;
+        } else {
+            puts(KRED "FAILURE:" KNRM " Message string got corrupted and is not the same anymore.");
+            failure++;
+        }
+    }
+
+    {
+        return_value = SDTP_commitment_validity_check(verify_test);
+
+        if(return_value == 0) {
+            puts(KGRN "SUCCESS:" KNRM " Retreaved commitment is intact and was validated.");
+            success++;
+        } else {
+            puts(KRED "FAILURE:" KNRM " Retreaved commitment was not validated and got changed.");
+            failure++;
+        }
+    }
 
     g_byte_array_free(temporary_data, TRUE);
 
