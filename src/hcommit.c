@@ -12,38 +12,57 @@
 #include "../sha-2-master/sha-256.h"
 
 #include "hcommit.h"
-
-// Should become a dedicated helper library later
-#ifdef DEBUG
+#define PRINT_FILE
+#ifdef PRINT_FILE
 void debug_print_gbyte_array(GByteArray * to_print, char * identifier) {
     register unsigned int i;
+    static unsigned int j = 0;
+    GString * filename_with_number;
+
+    filename_with_number = g_string_new(identifier);
+    g_string_prepend(filename_with_number, "GBYTES_");
+    g_string_append_printf(filename_with_number, "_%u", j);
+
+    FILE * f;
+
+    f = fopen(filename_with_number->str, "w");
 
     for (i = 0; i < to_print->len; i++) {
-        if (i % 16 == 0 && i > 1)
-            putc('\n', stdout);
-        printf("%02x ", to_print->data[i]);
-    } putc('\n', stdout);
+        fputc(to_print->data[i], f);
+    }
 
-    printf("\n%i byte(s), identifier '%s'\n\n", to_print->len, identifier);
+    fclose(f);
+    g_string_free(filename_with_number, TRUE);
+    j++;
 
     return;
 }
 
 void debug_print_mem(char * dat, size_t len, char * identifier) {
     register unsigned int i;
+    static unsigned int j = 0;
+    GString * filename_with_number;
+
+    filename_with_number = g_string_new(identifier);
+    g_string_prepend(filename_with_number, "RAWMEM_");
+    g_string_append_printf(filename_with_number, "_%u", j);
+
+    FILE * f;
+
+    f = fopen(filename_with_number->str, "w");
 
     for (i = 0; i < len; i++) {
-        if (i % 16 == 0 && i > 1)
-            putc('\n', stdout);
-        printf("%02hhx ", dat[i]);
-    } putc('\n', stdout);
+        fputc(dat[i], f);
+    }
 
-    printf("\n%li byte(s), identifier '%s'\n\n", len, identifier);
+    fclose(f);
+    g_string_free(filename_with_number, TRUE);
+    j++;
 
     return;
 }
 #endif
-#ifndef DEBUG
+#ifndef PRINT_FILE
 void debug_print_gbyte_array(GByteArray * to_print, char * identifier) {return;}
 void debug_print_mem(char * dat, size_t len, char * identifier) {return;}
 #endif
@@ -200,9 +219,9 @@ int SDTP_commitment_set_by_header(commitment_s * obj, GByteArray * out, commitme
     }
 
     if(out->data[2] == 0) {
-        obj->commitment_datamode == COMMITMENT_TEXT_MESSAGE;
+        obj->commitment_datamode = COMMITMENT_TEXT_MESSAGE;
     } else if(out->data[2] == 1) {
-        obj->commitment_datamode == COMMITMENT_DATA_PAYLOAD;
+        obj->commitment_datamode = COMMITMENT_DATA_PAYLOAD;
     }
 
     //obj->commitment_datamode = out->data[2] ? COMMITMENT_TEXT_MESSAGE : COMMITMENT_DATA_PAYLOAD;
