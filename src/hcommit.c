@@ -3,6 +3,7 @@
  * Rename SDTP_commitment_write to **_serialize?
  * Use glibcryptos implementation for SHA-256 and random entropy
  * Make g_byte_array_set macro: empty + append; tb used with entropy e.g.
+ * No verification if entropy has been set is made: hashval_calculate works without entropy (BAD)
  */
 
 #include <glib-2.0/glib.h>
@@ -32,6 +33,11 @@ void debug_print_gbyte_array(GByteArray * to_print, char * identifier) {
     }
 
     fclose(f);
+    g_string_prepend(filename_with_number, "hexdump ");
+    g_string_append(filename_with_number, " -C");
+    printf("%s (%i bytes):\n\n", identifier, to_print->len);
+    fflush(NULL);
+    system(filename_with_number->str);
     g_string_free(filename_with_number, TRUE);
     j++;
 
@@ -56,6 +62,10 @@ void debug_print_mem(char * dat, size_t len, char * identifier) {
     }
 
     fclose(f);
+    g_string_prepend(filename_with_number, "hexdump ");
+    g_string_append(filename_with_number, " -C");
+    puts(identifier);
+    system(filename_with_number->str);
     g_string_free(filename_with_number, TRUE);
     j++;
 
@@ -101,7 +111,7 @@ int SDTP_commitment_payload_set(commitment_s * obj, GByteArray * pyl) {
     if (pyl->len > MAX_PAYLOAD_LENGTH)
         return -1;
 
-    g_byte_array_append(obj->commitment_payload, pyl->data, pyl->len);
+    g_byte_array_assign(obj->commitment_payload, pyl->data, pyl->len);
     obj->commitment_datamode = COMMITMENT_DATA_PAYLOAD;
     obj->commitment_calculated_b = FALSE;  // Hash is no longer valid
 
@@ -135,7 +145,7 @@ int SDTP_commitment_entropy_set(commitment_s * obj) {
 
     fclose(entropy_f);
 
-    g_byte_array_append(obj->commitment_entropy, entropy, sizeof(entropy));
+    g_byte_array_assign(obj->commitment_entropy, entropy, sizeof(entropy));
 
     obj->commitment_calculated_b = FALSE;
 
@@ -147,6 +157,11 @@ int SDTP_commitment_hashval_calculate(commitment_s * obj) {
     guint8 hash[SHA256_HASH_LENGTH];
 
     reveal_body_to_hash = g_byte_array_new();
+
+    if(obj->commitment_entropy->len != DEF_ENTROPY_LENGTH) {
+        puts("Warning: Entropy didn't exist yet.");
+        SDTP_commitment_entropy_set(obj);
+    }
 
     SDTP_commitment_body_get(obj, reveal_body_to_hash, OPERATION_MODE_REVEAL);
     calc_sha_256(hash, reveal_body_to_hash->data, reveal_body_to_hash->len);
@@ -189,6 +204,8 @@ int SDTP_commitment_header_get(commitment_s * obj, GByteArray * out, commitment_
     guint8 op_mode;
     guint8 data_mode;
 
+    g_byte_array_empty(out);
+
     if(mode == OPERATION_MODE_COMMIT) {
         op_mode = 0;
     } else if (mode == OPERATION_MODE_REVEAL) {
@@ -209,6 +226,7 @@ int SDTP_commitment_header_get(commitment_s * obj, GByteArray * out, commitment_
 }
 
 int SDTP_commitment_set_by_header(commitment_s * obj, GByteArray * out, commitment_operation_mode_t * mode) {
+
     g_assert_true(out->len == 3);
     g_assert_true(out->data[0] == 0);
 
@@ -258,7 +276,7 @@ int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_op
     } else if (mode == OPERATION_MODE_COMMIT && obj->commitment_calculated_b == TRUE) {
         g_byte_array_append(out, &time_binary, sizeof(time_binary));
         g_byte_array_append(out, obj->commitment_hashval->data, obj->commitment_hashval->len);
-        g_byte_array_append(out, obj->commitment_subject->str, obj->commitment_subject->len + 1);
+        g_byte_array_append(out, obj->commitment_subject->str, obj->commitment_subject->len);
     } else {
         return -1;
     }
@@ -324,6 +342,9 @@ int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment
     } else if (omode == OPERATION_MODE_COMMIT) {
         /* if(out->len < (sizeof(guint64) + SHA256_HASH_LENGTH + 1))
             abort(); */
+        guint8 null[] = {0x00};
+
+        g_byte_array_append(out, null, 1);  // Is there a less awkward way to write this?
 
         memcpy(&time_binary, out->data + offset, sizeof(guint64));
         time_binary = GINT64_FROM_BE(time_binary);
@@ -350,12 +371,7 @@ int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray
             opmode = OPERATION_MODE_REVEAL;
         }
 
-        if(opmode == OPERATION_MODE_COMMIT) {
-            //g_assert_true(body->len == SHA256_HASH_LENGTH);
-        } else if (opmode == OPERATION_MODE_REVEAL) {
-            // Might be changed to explicitly distinguish between min length of text and data mode.
-            //g_assert_true(body->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 2));
-        }
+        // More verification reasonable?
     }
 
     g_byte_array_append(commitment, header->data, header->len);
@@ -365,28 +381,8 @@ int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray
 }
 
 int SDTP_commitment_split_to_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body) {
-    // Final check of plausibility
-    /*{
-        commitment_operation_mode_t opmode;
-
-        g_assert_true(commitment->len > 3);
-
-        if(commitment->data[1] == 0) {
-            opmode = OPERATION_MODE_COMMIT;
-        } else if (commitment->data[1] == 1) {
-            opmode = OPERATION_MODE_REVEAL;
-        }
-
-        if(opmode == OPERATION_MODE_COMMIT) {
-            //g_assert_true(commitment->len == SHA256_HASH_LENGTH + 3);   // Including fixed-length header
-        } else if (opmode == OPERATION_MODE_REVEAL) {
-            // Might be changed to explicitly distinguish between min length of text and data mode.
-            //g_assert_true(body->len > (DEF_ENTROPY_LENGTH + sizeof(guint64) + 2 + 3));  // Same here
-        }
-    }*/
-
-    g_byte_array_append(header, commitment->data, 3);
-    g_byte_array_append(body, commitment->data + 3, commitment->len - 3);
+    g_byte_array_assign(header, commitment->data, 3);
+    g_byte_array_assign(body, commitment->data + 3, commitment->len - 3);
 }
 
 // TODO: Analogous to subject_set and message_set, modify to allow overwriting

@@ -4,7 +4,11 @@
 #include <glib-2.0/glib.h>
 #include <stdio.h>
 
-#define g_byte_array_empty(dat); g_byte_array_remove_range(dat,0,dat->len);
+#define g_byte_array_empty(arr); g_byte_array_remove_range(arr,0,arr->len);
+#define g_byte_array_assign(array,data,length) {\
+        g_byte_array_remove_range(array,0,array->len);\
+        g_byte_array_append(array,data,length);\
+    }
 
 #define DEF_ENTROPY_LENGTH 12
 #define MAX_SUBJECT_LENGTH 64
