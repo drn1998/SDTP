@@ -92,7 +92,7 @@ void from_8x_bool_to_uint8(guint8 * res, gboolean _bools[8]) {
     return;
 }
 
-void from_uint8_to_8x_bool(guint input, gboolean _bools[8]) {
+void from_uint8_to_8x_bool(guint8 input, gboolean _bools[8]) {
     register int i;
 
     for(i = 0; i < 8; i++)
