@@ -100,7 +100,7 @@ void SDTP_commitment_revelation_set(SDTP_commitment * commitment, gint64 time_ut
 void __internal_SDTP_commitment_entropy_set(SDTP_commitment * commitment) {
     gchar entropy[DEF_ENTROPY_LENGTH];
     
-    if(commitment->entropy->len != 12) {
+    if(commitment->entropy->len != DEF_ENTROPY_LENGTH) {
         SDTP_crypto_write_random_entropy(entropy, DEF_ENTROPY_LENGTH);
         g_byte_array_assign(commitment->entropy, entropy, DEF_ENTROPY_LENGTH);
         __internal_SDTP_commitment_hashval_calc(commitment);
