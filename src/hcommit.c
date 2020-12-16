@@ -71,6 +71,8 @@ void SDTP_commitment_payload_set(SDTP_commitment * commitment, guchar * data, gs
     g_byte_array_assign(commitment->payload, data, len);
     commitment->datamode = COMMITMENT_DATA_MODE_BINARY;
     commitment->_hash_uptodate = FALSE;
+
+    return;
 }
 
 void SDTP_commitment_revelation_set(SDTP_commitment * commitment, gint64 time_utc) {
@@ -121,18 +123,55 @@ void __internal_SDTP_commitment_hashval_calc(SDTP_commitment * commitment) {
         g_byte_array_free(body_reveal_to_hash, TRUE);
         commitment->_hash_uptodate = TRUE;
     }
+
+    return;
 }
 
 void __internal_SDTP_commitment_head_get(SDTP_commitment * commitment, GByteArray * head_dest, SDTP_commitment_operation_mode operation_mode, gboolean is_human_readable) {
     gboolean himem;
     register int i;
     guint8 to_head;  // Next byte written to header
+    guint offset = 0;
+    gboolean flags[8];
+
+    g_byte_array_empty(head_dest);
 
     if(commitment->datamode == COMMITMENT_DATA_MODE_BINARY && commitment->payload->len > UINT24_MAX) {
         himem = TRUE;
     } else himem = FALSE;
 
-    //gboolean flags[8] = {FALSE, FALSE, FALSE, himem, is_human_readable, commitment->_revelation_set, (operation_mode == COMMITMENT_OPERATION_MODE_REVEAL) ? FALSE : TRUE, (commitment->datamode == COMMITMENT_DATA_MODE_TEXT) ? FALSE : TRUE };
+    {
+        // First three flags are always unset
+        for (i = 0; i < 3; i++) {
+            flags[offset] = FALSE;
+            offset++;
+        }
+
+        flags[offset] = himem;
+        offset++;
+
+        flags[offset] = is_human_readable;
+        offset++;
+
+        flags[offset] = commitment->_revelation_set;
+        offset++;
+
+        if(operation_mode == COMMITMENT_OPERATION_MODE_COMMIT) {
+            flags[offset] = FALSE;
+        } else {
+            flags[offset] = TRUE;
+        } 
+        offset++;
+
+        if(commitment->datamode == COMMITMENT_DATA_MODE_BINARY) {
+            flags[offset] = FALSE;
+        } else {
+            flags[offset] = TRUE;
+        }
+        offset++;
+
+        offset = 0;
+    }
 
     from_2x_uint4_to_uint8(&to_head, 0, 0);
     g_byte_array_append(head_dest, &to_head, 1);
@@ -140,11 +179,10 @@ void __internal_SDTP_commitment_head_get(SDTP_commitment * commitment, GByteArra
     from_8x_bool_to_uint8(&to_head, flags);
     g_byte_array_append(head_dest, &to_head, 1);
 
-    to_head = 0;    // No offset (yet)
+    to_head = 3;    // Third byte is first of body
     g_byte_array_append(head_dest, &to_head, 1);
-
-    debug_print_gbyte_array(head_dest, "head:");
     
+    return;
 }
 
 void __internal_SDTP_commitment_body_get(SDTP_commitment * commitment, GByteArray * body_dest, SDTP_commitment_operation_mode operation_mode) {
@@ -166,6 +204,7 @@ void __internal_SDTP_commitment_body_get(SDTP_commitment * commitment, GByteArra
         }
         g_byte_array_append(body_dest, commitment->hashval->data, HASH_LENGTH);
         g_byte_array_append(body_dest, commitment->subject->str, commitment->subject->len);
+
     } else if(operation_mode == COMMITMENT_OPERATION_MODE_REVEAL) {
         g_byte_array_append(body_dest, commitment->entropy->data, DEF_ENTROPY_LENGTH);
         if(commitment->_revelation_set) {
@@ -191,6 +230,123 @@ void __internal_SDTP_commitment_body_get(SDTP_commitment * commitment, GByteArra
             }
 
             g_byte_array_append(body_dest, commitment->payload->data, commitment->payload->len);
+        }
+
+    }
+
+    return;
+}
+
+void __internal_SDTP_commitment_head_setby(SDTP_commitment * commitment, GByteArray * head_src, SDTP_commitment_operation_mode * operation_mode, gboolean * is_human_readable) {
+    gboolean himem;
+    register int i;
+    guint8 to_head;  // Next byte written to header
+    guint offset = 0;
+    gboolean flags[8];
+
+    if(head_src->data[offset] != 0)
+        return;
+
+    offset++;
+
+    from_uint8_to_8x_bool(head_src->data[offset], flags);
+
+    // Third byte relevant for split-join-fn's, not this one
+
+    offset = 3; // Ignore reserved flags for now
+
+    commitment->_is_himem = flags[offset];
+    offset++;
+
+    *is_human_readable = flags[offset];
+    offset++;
+
+    commitment->_revelation_set = flags[offset];
+    offset++;
+
+    if(!flags[offset]) {
+        *operation_mode = COMMITMENT_OPERATION_MODE_COMMIT;
+    } else {
+        *operation_mode = COMMITMENT_OPERATION_MODE_REVEAL;
+    } offset++;
+
+    if(!flags[offset]) {
+        commitment->datamode = COMMITMENT_DATA_MODE_BINARY;
+    } else {
+        commitment->datamode = COMMITMENT_DATA_MODE_TEXT;
+    } offset++;
+
+    offset = 0;
+
+}
+
+void __internal_SDTP_commitment_body_setby(SDTP_commitment * commitment, GByteArray * body_src, SDTP_commitment_operation_mode operation_mode) {
+    guint offset = 0;
+    guint nullbyte = 0x00;
+    guint payload_size = 0;
+    guchar reveal_time_binary[UINT48_BYTES];    // Rename as also used for uint24/uint48 of binary len
+    guint64 unix_time;
+
+    g_byte_array_append(body_src, &nullbyte, 1);
+
+    if(operation_mode == COMMITMENT_OPERATION_MODE_COMMIT) {
+
+        if (commitment->_revelation_set) {
+            if(body_src->len < (UINT48_BYTES + DEF_HASHVAL_LENGTH))
+                return; // Not minimum length
+            
+            memcpy(reveal_time_binary, body_src->data + offset, UINT48_BYTES);
+            from_uint48_to_uint64(reveal_time_binary, &unix_time);
+            SDTP_commitment_revelation_set(commitment, unix_time);
+            offset += UINT48_BYTES;
+        }
+
+        g_byte_array_assign(commitment->hashval, body_src->data + offset, DEF_HASHVAL_LENGTH);
+        offset += DEF_HASHVAL_LENGTH;
+
+        g_string_assign(commitment->subject, body_src->data + offset);
+
+        offset = 0;
+    } else if (operation_mode == COMMITMENT_OPERATION_MODE_REVEAL) {
+        g_byte_array_assign(commitment->entropy, body_src->data, DEF_ENTROPY_LENGTH);
+        offset += DEF_ENTROPY_LENGTH;
+
+        if (commitment->_revelation_set) {
+            if(body_src->len < (UINT48_BYTES + DEF_ENTROPY_LENGTH + 2))
+                return; // Not minimum length
+            
+            memcpy(reveal_time_binary, body_src->data + offset, UINT48_BYTES);
+            from_uint48_to_uint64(reveal_time_binary, &unix_time);
+            SDTP_commitment_revelation_set(commitment, unix_time);
+            offset += UINT48_BYTES;
+        }
+
+        g_string_assign(commitment->subject, body_src->data + offset);
+        offset += strlen(commitment->subject->str) + 1;
+
+        if(commitment->datamode == COMMITMENT_DATA_MODE_TEXT) {
+            g_string_assign(commitment->message, body_src->data + offset);
+        } else if (commitment->datamode == COMMITMENT_DATA_MODE_BINARY) {
+            memset(reveal_time_binary, 0, UINT48_BYTES);
+
+            if(!commitment->_is_himem) {
+                guint32 payload_32 = 0;
+                memcpy(reveal_time_binary, body_src->data + offset, UINT24_BYTES);
+                debug_print_mem(reveal_time_binary, 6, "len:");
+                from_uint24_to_uint32(reveal_time_binary, &payload_32);
+                payload_size = payload_32;
+                offset += UINT24_BYTES;
+            } else if (commitment->_is_himem) {
+                guint64 payload_64 = 0;
+                memcpy(reveal_time_binary, body_src->data + offset, UINT48_BYTES);
+                from_uint48_to_uint64(reveal_time_binary, &payload_64);
+                payload_size = payload_64;
+                offset += UINT48_BYTES;
+            }
+
+            printf("(size) %i\n", payload_size);
+
+            g_byte_array_assign(commitment->payload, body_src->data + offset, payload_size);
         }
     }
 }
