@@ -20,6 +20,8 @@ void SDTP_commitment_create(SDTP_commitment ** commitment) {
 
     (*commitment)->_hash_uptodate = FALSE;
     (*commitment)->_revelation_set = FALSE;
+    (*commitment)->content.has_commit = FALSE;
+    (*commitment)->content.has_reveal = FALSE;
 
     return;
 }
@@ -137,11 +139,13 @@ void SDTP_commitment_serialize(SDTP_commitment * commitment, GByteArray * commit
     return;
 }
 
-void SDTP_commitment_deserialize(SDTP_commitment * commitment, GByteArray * commitment_src, gboolean * is_valid) {
-    SDTP_commitment * inspection_commitment;    // Perhaps obsolete
-
+void SDTP_commitment_deserialize(SDTP_commitment * commitment, GByteArray * commitment_src, SDTP_commitment_validity * validity) {
     GByteArray * head;
     GByteArray * body;
+
+    GDateTime * current_utc;
+
+    guint8 cmp_hash[DEF_HASHVAL_LENGTH];
 
     SDTP_commitment_operation_mode mode;
     gboolean human_readable;
@@ -152,19 +156,34 @@ void SDTP_commitment_deserialize(SDTP_commitment * commitment, GByteArray * comm
     g_byte_array_assign(head, commitment_src->data, 3);
     g_byte_array_assign(body, commitment_src->data + 3, commitment_src->len - 3);   // Use third byte instead of magic number
 
-    SDTP_commitment_create(&inspection_commitment);
-
     __internal_SDTP_commitment_head_setby(commitment, head, &mode, &human_readable);
 
-    // Otherwise, body_setby would call unref illegally
-    if(commitment->_revelation_set == TRUE) // Causes mem leak? Perhaps because meant tb invoked two times
+    if(mode == COMMITMENT_OPERATION_MODE_COMMIT)
+        commitment->content.has_commit = TRUE;
+    else if (mode == COMMITMENT_OPERATION_MODE_REVEAL)
+        commitment->content.has_reveal = TRUE;
+
+    if(commitment->_revelation_set == TRUE && (commitment->content.has_commit != commitment->content.has_reveal))
         commitment->revelation = g_date_time_new_from_unix_utc(0);
 
     __internal_SDTP_commitment_body_setby(commitment, body, mode);
 
-    //debug_print_gbyte_array(inspection_commitment->hashval, "hash_value");
+    if (commitment->content.has_commit && commitment->content.has_reveal) {
+        memcpy(cmp_hash, commitment->hashval->data, DEF_HASHVAL_LENGTH);
+        commitment->_hash_uptodate = FALSE;
+        __internal_SDTP_commitment_hashval_calc(commitment);
+        if(memcmp(commitment->hashval->data, cmp_hash, DEF_HASHVAL_LENGTH) == 0)
+            *validity = COMMITMENT_VALID;
+    }
 
-    SDTP_commitment_delete(&inspection_commitment);
+    if(commitment->_revelation_set) {
+        current_utc = g_date_time_new_now_utc();
+        
+        if(g_date_time_compare(commitment->revelation, current_utc) < 1)
+            *validity = COMMITMENT_NOT_VALID_DATETIME;
+
+        g_date_time_unref(current_utc);
+    }
 
     g_byte_array_free(head, TRUE);
     g_byte_array_free(body, TRUE);

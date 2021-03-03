@@ -26,6 +26,18 @@ typedef enum SDTP_commitment_operation_mode {
     COMMITMENT_OPERATION_MODE_REVEAL
 } SDTP_commitment_operation_mode;
 
+typedef enum SDTP_commitment_validity {
+    COMMITMENT_NOT_VERIFIABLE,
+    COMMITMENT_NOT_VALID,
+    COMMITMENT_NOT_VALID_DATETIME,
+    COMMITMENT_VALID
+} SDTP_commitment_validity;
+
+typedef struct SDTP_commitment_content {
+    gboolean has_commit;
+    gboolean has_reveal;
+} SDTP_commitment_content;
+
 typedef struct SDTP_commitment {
     GString * subject;
     GString * message;
@@ -37,6 +49,7 @@ typedef struct SDTP_commitment {
     GDateTime * revelation;
 
     SDTP_commitment_data_mode datamode;
+    SDTP_commitment_content content;
 
     gboolean _hash_uptodate;
     gboolean _revelation_set;
@@ -50,8 +63,8 @@ void SDTP_commitment_message_set(SDTP_commitment * commitment, gchar * message);
 void SDTP_commitment_payload_set(SDTP_commitment * commitment, guchar * data, gsize len);
 void SDTP_commitment_revelation_set(SDTP_commitment * commitment, gint64 time_utc);
 
-void SDTP_commitment_serialize(SDTP_commitment * commitment, GByteArray * commit_dest, GByteArray * reveal_dest);
-void SDTP_commitment_deserialize(SDTP_commitment * commitment, GByteArray * commitment_src);
+void SDTP_commitment_serialize(SDTP_commitment * commitment, GByteArray * commit_dest, GByteArray * reveal_dest, gboolean is_human_readable);
+void SDTP_commitment_deserialize(SDTP_commitment * commitment, GByteArray * commitment_src, SDTP_commitment_validity * validity);
 
 void __internal_SDTP_commitment_entropy_set(SDTP_commitment * commitment);
 void __internal_SDTP_commitment_hashval_calc(SDTP_commitment * commitment);
