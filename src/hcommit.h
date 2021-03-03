@@ -2,69 +2,63 @@
 #define HCOMMIT_H
 
 #include <glib-2.0/glib.h>
-#include <stdio.h>
 
-#define g_byte_array_empty(arr); g_byte_array_remove_range(arr,0,arr->len);
-#define g_byte_array_assign(array,data,length) {\
-        g_byte_array_remove_range(array,0,array->len);\
-        g_byte_array_append(array,data,length);\
-    }
-
-#define DEF_ENTROPY_LENGTH 12
 #define MAX_SUBJECT_LENGTH 64
 #define MAX_MESSAGE_LENGTH 1024
-#define MAX_PAYLOAD_LENGTH (1024 * 1024 * 16)
-#define SHA256_HASH_LENGTH 32
+#define MAX_PAYLOAD_LENGTH 281474976710656
+#define DEF_ENTROPY_LENGTH 12
+#define DEF_HASHVAL_LENGTH 32
 
-typedef enum commitment_datamode_t {
-    COMMITMENT_TEXT_MESSAGE,
-    COMMITMENT_DATA_PAYLOAD
-} commitment_datamode_t; // Rename to DATAMODE_TEXT/DATA ?
+#define g_byte_array_empty(array); g_byte_array_remove_range(array,0,array->len);
+#define g_byte_array_assign(array,data,length) {\
+        g_byte_array_empty(array);\
+        g_byte_array_append(array,data,length);\
+    };
 
-typedef enum commitment_operation_mode_t {
-    OPERATION_MODE_COMMIT,
-    OPERATION_MODE_REVEAL
-} commitment_operation_mode_t;
+typedef enum SDTP_commitment_data_mode {
+    COMMITMENT_DATA_MODE_UNDEFINED,
+    COMMITMENT_DATA_MODE_TEXT,
+    COMMITMENT_DATA_MODE_BINARY
+} SDTP_commitment_data_mode;
 
-typedef struct commitment_s {
-    GString * commitment_message;
-    GString * commitment_subject;
-    GByteArray * commitment_payload;
+typedef enum SDTP_commitment_operation_mode {
+    COMMITMENT_OPERATION_MODE_COMMIT,
+    COMMITMENT_OPERATION_MODE_REVEAL
+} SDTP_commitment_operation_mode;
 
-    gboolean commitment_schedule_b;
-    gboolean commitment_calculated_b;
+typedef struct SDTP_commitment {
+    GString * subject;
+    GString * message;
+    
+    GByteArray * payload;
+    GByteArray * entropy;
+    GByteArray * hashval;
 
-    GByteArray * commitment_entropy;
-    GByteArray * commitment_hashval;
-    GDateTime * commitment_revelation;
+    GDateTime * revelation;
 
-    commitment_datamode_t commitment_datamode;
+    SDTP_commitment_data_mode datamode;
 
-} commitment_s; // Rename SDTP_Commitment?
+    gboolean _hash_uptodate;
+    gboolean _revelation_set;
+    gboolean _is_himem; // Set using setby_header
+} SDTP_commitment;
 
-int SDTP_commitment_create(commitment_s ** obj);
-int SDTP_commitment_delete(commitment_s ** obj);
-int SDTP_commitment_message_set(commitment_s * obj, GString * msg);
-int SDTP_commitment_subject_set(commitment_s * obj, GString * sub);
-int SDTP_commitment_payload_set(commitment_s * obj, GByteArray * pyl);
-int SDTP_commitment_entropy_set(commitment_s * obj);
-int SDTP_commitment_schedule_set(commitment_s * obj, const gchar * datetime);
-int SDTP_commitment_prepare(commitment_s * obj);
-int SDTP_commitment_clear(commitment_s * obj);
-int SDTP_commitment_printf(commitment_s * obj);
-int SDTP_commitment_hashval_calculate(commitment_s * obj);
-int SDTP_commitment_validity_check(commitment_s * obj);
-int SDTP_commitment_body_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode);
-int SDTP_commitment_set_by_body(commitment_s * obj, GByteArray * out, commitment_operation_mode_t omode); // Call mode or call others omode
+void SDTP_commitment_create(SDTP_commitment ** commitment);
+void SDTP_commitment_delete(SDTP_commitment ** commitment);
+void SDTP_commitment_subject_set(SDTP_commitment * commitment, gchar * subject);
+void SDTP_commitment_message_set(SDTP_commitment * commitment, gchar * message);
+void SDTP_commitment_payload_set(SDTP_commitment * commitment, guchar * data, gsize len);
+void SDTP_commitment_revelation_set(SDTP_commitment * commitment, gint64 time_utc);
 
-// Header handling
-int SDTP_commitment_header_get(commitment_s * obj, GByteArray * out, commitment_operation_mode_t mode);
-int SDTP_commitment_set_by_header(commitment_s * obj, GByteArray * out, commitment_operation_mode_t * mode);
-int SDTP_commitment_get_from_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body);
-int SDTP_commitment_split_to_header_and_body(GByteArray * commitment, GByteArray * header, GByteArray * body);
+void SDTP_commitment_serialize(SDTP_commitment * commitment, GByteArray * commit_dest, GByteArray * reveal_dest);
+void SDTP_commitment_deserialize(SDTP_commitment * commitment, GByteArray * commitment_src);
 
-// Debug TODO: Doesn't really belong here
-void debug_print_gbyte_array(GByteArray * to_print, char * identifier);
-void debug_print_mem(char * dat, size_t len, char * identifier);
+void __internal_SDTP_commitment_entropy_set(SDTP_commitment * commitment);
+void __internal_SDTP_commitment_hashval_calc(SDTP_commitment * commitment);
+
+void __internal_SDTP_commitment_head_get(SDTP_commitment * commitment, GByteArray * head_dest, SDTP_commitment_operation_mode operation_mode, gboolean is_human_readable);
+void __internal_SDTP_commitment_head_setby(SDTP_commitment * commitment, GByteArray * head_src, SDTP_commitment_operation_mode * operation_mode, gboolean * is_human_readable);
+void __internal_SDTP_commitment_body_get(SDTP_commitment * commitment, GByteArray * body_dest, SDTP_commitment_operation_mode operation_mode);
+void __internal_SDTP_commitment_body_setby(SDTP_commitment * commitment, GByteArray * body_src, SDTP_commitment_operation_mode operation_mode);
 
 #endif
