@@ -129,7 +129,45 @@ void SDTP_commitment_serialize(SDTP_commitment * commitment, GByteArray * commit
     g_byte_array_append(out_array, body_array->data, body_array->len);
     g_byte_array_assign(reveal_dest, out_array->data, out_array->len);
 
+    g_byte_array_free(out_array, TRUE);
+    g_byte_array_free(head_array, TRUE);
+    g_byte_array_free(body_array, TRUE);
+
+
     return;
+}
+
+void SDTP_commitment_deserialize(SDTP_commitment * commitment, GByteArray * commitment_src, gboolean * is_valid) {
+    SDTP_commitment * inspection_commitment;    // Perhaps obsolete
+
+    GByteArray * head;
+    GByteArray * body;
+
+    SDTP_commitment_operation_mode mode;
+    gboolean human_readable;
+
+    head = g_byte_array_new();
+    body = g_byte_array_new();
+
+    g_byte_array_assign(head, commitment_src->data, 3);
+    g_byte_array_assign(body, commitment_src->data + 3, commitment_src->len - 3);   // Use third byte instead of magic number
+
+    SDTP_commitment_create(&inspection_commitment);
+
+    __internal_SDTP_commitment_head_setby(commitment, head, &mode, &human_readable);
+
+    // Otherwise, body_setby would call unref illegally
+    if(commitment->_revelation_set == TRUE) // Causes mem leak? Perhaps because meant tb invoked two times
+        commitment->revelation = g_date_time_new_from_unix_utc(0);
+
+    __internal_SDTP_commitment_body_setby(commitment, body, mode);
+
+    //debug_print_gbyte_array(inspection_commitment->hashval, "hash_value");
+
+    SDTP_commitment_delete(&inspection_commitment);
+
+    g_byte_array_free(head, TRUE);
+    g_byte_array_free(body, TRUE);
 }
 
 void __internal_SDTP_commitment_entropy_set(SDTP_commitment * commitment) {
