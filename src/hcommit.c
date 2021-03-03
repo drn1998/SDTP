@@ -99,6 +99,39 @@ void SDTP_commitment_revelation_set(SDTP_commitment * commitment, gint64 time_ut
     return;
 }
 
+void SDTP_commitment_serialize(SDTP_commitment * commitment, GByteArray * commit_dest, GByteArray * reveal_dest, gboolean is_human_readable) {
+    // Check completeness!
+
+    GByteArray * out_array;
+
+    GByteArray * head_array;
+    GByteArray * body_array;
+
+    out_array = g_byte_array_new();
+    head_array = g_byte_array_new();
+    body_array = g_byte_array_new();
+
+    __internal_SDTP_commitment_head_get(commitment, head_array, COMMITMENT_OPERATION_MODE_COMMIT, is_human_readable);
+    __internal_SDTP_commitment_body_get(commitment, body_array, COMMITMENT_OPERATION_MODE_COMMIT);
+
+    g_byte_array_append(out_array, head_array->data, head_array->len);
+    g_byte_array_append(out_array, body_array->data, body_array->len);
+    g_byte_array_assign(commit_dest, out_array->data, out_array->len);
+
+    g_byte_array_empty(out_array);
+    g_byte_array_empty(head_array);
+    g_byte_array_empty(body_array);
+
+    __internal_SDTP_commitment_head_get(commitment, head_array, COMMITMENT_OPERATION_MODE_REVEAL, is_human_readable);
+    __internal_SDTP_commitment_body_get(commitment, body_array, COMMITMENT_OPERATION_MODE_REVEAL);
+
+    g_byte_array_append(out_array, head_array->data, head_array->len);
+    g_byte_array_append(out_array, body_array->data, body_array->len);
+    g_byte_array_assign(reveal_dest, out_array->data, out_array->len);
+
+    return;
+}
+
 void __internal_SDTP_commitment_entropy_set(SDTP_commitment * commitment) {
     gchar entropy[DEF_ENTROPY_LENGTH];
     
@@ -179,7 +212,7 @@ void __internal_SDTP_commitment_head_get(SDTP_commitment * commitment, GByteArra
     from_8x_bool_to_uint8(&to_head, flags);
     g_byte_array_append(head_dest, &to_head, 1);
 
-    to_head = 3;    // Third byte is first of body
+    to_head = 3;    // Fourth byte is first of body
     g_byte_array_append(head_dest, &to_head, 1);
     
     return;
@@ -332,7 +365,6 @@ void __internal_SDTP_commitment_body_setby(SDTP_commitment * commitment, GByteAr
             if(!commitment->_is_himem) {
                 guint32 payload_32 = 0;
                 memcpy(reveal_time_binary, body_src->data + offset, UINT24_BYTES);
-                debug_print_mem(reveal_time_binary, 6, "len:");
                 from_uint24_to_uint32(reveal_time_binary, &payload_32);
                 payload_size = payload_32;
                 offset += UINT24_BYTES;
@@ -343,8 +375,6 @@ void __internal_SDTP_commitment_body_setby(SDTP_commitment * commitment, GByteAr
                 payload_size = payload_64;
                 offset += UINT48_BYTES;
             }
-
-            printf("(size) %i\n", payload_size);
 
             g_byte_array_assign(commitment->payload, body_src->data + offset, payload_size);
         }
