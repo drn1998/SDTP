@@ -4,7 +4,10 @@ import csv
 from configparser import ConfigParser
 
 def nPr(n, r):
-	return math.factorial(n)//math.factorial(n-r)
+	if(n == r):
+		return math.factorial(n)
+	else:
+		return math.factorial(n)//math.factorial(n-r)
 
 config = ConfigParser()
 config.read('param.ini')
@@ -17,13 +20,16 @@ fd = open(sys.argv[1], 'r')
 elem = fd.read().split('\n')
 fd.close()
 
-elem.pop()
+elem.pop() #Remove single empty element at the end
 
 i = len(elem)
 j = config.getint('combination', 'j')
 
+if j == -1:
+	j = i
+
 if sys.argv[2] == "-r":
-	print("0 - " + str(nPr(i, j) - 1) + ", " + str(math.floor(math.log2(nPr(i, j)))) + " bit")
+	print(str(math.floor(math.log2(nPr(i, j)))) + " bit")
 	quit()
 
 valueToSteg = int(sys.argv[2])
@@ -43,3 +49,5 @@ while j > 0:
 	pos = valueToSteg // div
 	valueToSteg = valueToSteg % div
 	print(elem.pop(pos))
+
+quit()
