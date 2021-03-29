@@ -40,4 +40,4 @@ CD-RW
 ## Limitations
 - Alice and Bob have to define an agreed order of the objects. Alphabetical ordering is usually reasonable and should be chosen unless there are compelling reasons against it.
 - The list must not contain objects multiple times. The script currently cannot automatically recognize violations of this rule.
-- If the input number is always binary, some values can never be reached which is a stochastic entrypoint for steganalysis. Countermeasures like adding a bias that can be unambiguously subtracted when decoding are not implemented so far.
+- If the input number is always binary, some values (and therefore combinations) can never be reached which is a stochastic entrypoint for steganalysis. Countermeasures like adding a bias that can be unambiguously subtracted when decoding are not implemented so far.
