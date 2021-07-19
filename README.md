@@ -1,5 +1,5 @@
 # SDTP
-**[19.07.1998 18:41 UTC]**
+**[19.07.2021 18:41 UTC]**
 I decided to make the file formats of SDTP more modular and for that reason abandon the possibility of plain-text in the commitment library and respective format. While this will mean that a release of hcommit is not possible in August due to my limited time, I think this makes more sense in the long term. There will be formats for each kind of data (plaintext message, hash commitment, access-limited hash tables etc.) and it's also possible to cascade them, e.g. a commitment containing a plaintext message or an rectangular pointer etc.
 
 **Disclaimer and warning:** SDTP is in a very early state of development. There is no stable release and it currently does not satisfy the strict requirements for review and testing of cryptographic software.
